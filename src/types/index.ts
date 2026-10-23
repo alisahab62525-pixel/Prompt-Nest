@@ -87,3 +87,24 @@ export interface ReportItem {
 }
 
 export type SortOption = 'trending' | 'newest' | 'likes' | 'copies';
+
+export interface SiteSettings {
+  siteName: string;
+  tagline: string;
+  heroBadge: string;
+  heroHeadline: string;
+  heroDescription: string;
+  exploreBadgeText: string;
+  supportEmail: string;
+  contactEmail: string;
+  contactPhone: string;
+  addressText: string;
+  copyrightText: string;
+  announcementActive: boolean;
+  announcementText: string;
+  announcementLink: string;
+  twitterUrl: string;
+  discordUrl: string;
+  githubUrl: string;
+  updatedAt?: string;
+}

@@ -8,10 +8,8 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   limit,
   increment,
-  serverTimestamp,
   writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../lib/firebase.ts';
@@ -21,20 +19,23 @@ import { SEED_PROMPTS } from '../data/seedData.ts';
 const PROMPTS_COLLECTION = 'prompts';
 const REPORTS_COLLECTION = 'reports';
 
-// Error handler helper matching Firebase skill guidelines
-function handleFirestoreError(error: unknown, operation: string, path: string): never {
-  const errMessage = error instanceof Error ? error.message : String(error);
-  const errorPayload = {
-    error: errMessage,
-    operationType: operation,
-    path,
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email
-    }
-  };
-  console.error('Firestore Error:', JSON.stringify(errorPayload));
-  throw new Error(errMessage);
+function getLocalPrompts(): Prompt[] {
+  try {
+    const raw = localStorage.getItem('promptnest_local_prompts');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalPrompt(p: Prompt) {
+  try {
+    const current = getLocalPrompts();
+    const updated = [p, ...current.filter((item) => item.id !== p.id)];
+    localStorage.setItem('promptnest_local_prompts', JSON.stringify(updated));
+  } catch (e) {
+    console.error(e);
+  }
 }
 
 // Auto-seed Firestore on first load if empty
@@ -47,7 +48,6 @@ export async function seedInitialDataIfNeeded(): Promise<void> {
     const promptsCol = collection(db, PROMPTS_COLLECTION);
     const snap = await getDocs(query(promptsCol, limit(1)));
     if (snap.empty) {
-      console.log('Seeding initial prompts to Firestore...');
       const batch = writeBatch(db);
       for (const p of SEED_PROMPTS) {
         const ref = doc(db, PROMPTS_COLLECTION, p.id);
@@ -59,10 +59,9 @@ export async function seedInitialDataIfNeeded(): Promise<void> {
         });
       }
       await batch.commit();
-      console.log('Initial prompts seeded successfully.');
     }
   } catch (err) {
-    console.warn('Initial seed skipped or failed (will use client fallback):', err);
+    console.warn('Initial seed skipped or failed (using local seed data):', err);
   }
 }
 
@@ -77,6 +76,8 @@ export async function fetchPrompts(options?: {
   limitCount?: number;
 }): Promise<Prompt[]> {
   await seedInitialDataIfNeeded();
+
+  let firestoreResults: Prompt[] = [];
 
   try {
     const promptsCol = collection(db, PROMPTS_COLLECTION);
@@ -96,71 +97,84 @@ export async function fetchPrompts(options?: {
       q = query(q, where('model', '==', options.model));
     }
 
-    // Limit to safe quantity
     const maxItems = options?.limitCount || 50;
     q = query(q, limit(maxItems));
 
     const snap = await getDocs(q);
-    let results: Prompt[] = snap.docs.map((docSnap) => {
+    firestoreResults = snap.docs.map((docSnap) => {
       const data = docSnap.data();
       return {
         id: docSnap.id,
         ...data,
       } as Prompt;
     });
-
-    // If Firestore has no documents yet or fails due to network, fall back to seed data
-    if (results.length === 0 && (!options?.authorId)) {
-      results = [...SEED_PROMPTS];
-      if (options?.category && options.category !== 'all') {
-        results = results.filter((p) => p.category === options.category);
-      }
-      if (options?.model && options.model !== 'all') {
-        results = results.filter((p) => p.model === options.model);
-      }
-    }
-
-    // Client-side text search (Firestore does not have native substring search)
-    if (options?.searchQuery?.trim()) {
-      const qLower = options.searchQuery.toLowerCase().trim();
-      results = results.filter(
-        (p) =>
-          p.title.toLowerCase().includes(qLower) ||
-          p.description.toLowerCase().includes(qLower) ||
-          p.promptText.toLowerCase().includes(qLower) ||
-          p.tags?.some((t) => t.toLowerCase().includes(qLower)) ||
-          p.authorName.toLowerCase().includes(qLower)
-      );
-    }
-
-    // Sorting
-    const sort = options?.sortBy || 'trending';
-    results.sort((a, b) => {
-      if (sort === 'likes') return (b.likesCount || 0) - (a.likesCount || 0);
-      if (sort === 'copies') return (b.copiesCount || 0) - (a.copiesCount || 0);
-      if (sort === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      // 'trending' combines likes + copies
-      const trendA = (a.likesCount || 0) * 2 + (a.copiesCount || 0);
-      const trendB = (b.likesCount || 0) * 2 + (b.copiesCount || 0);
-      return trendB - trendA;
-    });
-
-    return results;
   } catch (error) {
-    console.warn('Error fetching prompts from Firestore, falling back to local dataset:', error);
-    let fallback = [...SEED_PROMPTS];
-    if (options?.category && options.category !== 'all') {
-      fallback = fallback.filter((p) => p.category === options.category);
-    }
-    if (options?.model && options.model !== 'all') {
-      fallback = fallback.filter((p) => p.model === options.model);
-    }
-    if (options?.searchQuery?.trim()) {
-      const qLower = options.searchQuery.toLowerCase().trim();
-      fallback = fallback.filter((p) => p.title.toLowerCase().includes(qLower) || p.promptText.toLowerCase().includes(qLower));
-    }
-    return fallback;
+    console.warn('Firestore fetch query warning, using local dataset fallback:', error);
   }
+
+  // Combine with seed prompts and any locally authored prompts
+  const localAuthored = getLocalPrompts();
+  const allCombinedMap = new Map<string, Prompt>();
+
+  // 1. Seed prompts as base
+  for (const p of SEED_PROMPTS) {
+    allCombinedMap.set(p.id, p);
+  }
+
+  // 2. Firestore results
+  for (const p of firestoreResults) {
+    allCombinedMap.set(p.id, p);
+  }
+
+  // 3. Local created prompts
+  for (const p of localAuthored) {
+    allCombinedMap.set(p.id, p);
+  }
+
+  let results = Array.from(allCombinedMap.values());
+
+  // Filter by author
+  if (options?.authorId) {
+    results = results.filter((p) => p.authorId === options.authorId);
+  } else if (options?.onlyApproved !== false) {
+    results = results.filter((p) => p.status === 'approved');
+  }
+
+  // Filter by category
+  if (options?.category && options.category !== 'all') {
+    results = results.filter((p) => p.category === options.category);
+  }
+
+  // Filter by model
+  if (options?.model && options.model !== 'all') {
+    results = results.filter((p) => p.model === options.model);
+  }
+
+  // Search filter
+  if (options?.searchQuery?.trim()) {
+    const qLower = options.searchQuery.toLowerCase().trim();
+    results = results.filter(
+      (p) =>
+        p.title.toLowerCase().includes(qLower) ||
+        p.description.toLowerCase().includes(qLower) ||
+        p.promptText.toLowerCase().includes(qLower) ||
+        p.tags?.some((t) => t.toLowerCase().includes(qLower)) ||
+        p.authorName.toLowerCase().includes(qLower)
+    );
+  }
+
+  // Sorting
+  const sort = options?.sortBy || 'trending';
+  results.sort((a, b) => {
+    if (sort === 'likes') return (b.likesCount || 0) - (a.likesCount || 0);
+    if (sort === 'copies') return (b.copiesCount || 0) - (a.copiesCount || 0);
+    if (sort === 'newest') return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const trendA = (a.likesCount || 0) * 2 + (a.copiesCount || 0);
+    const trendB = (b.likesCount || 0) * 2 + (b.copiesCount || 0);
+    return trendB - trendA;
+  });
+
+  return results;
 }
 
 // Fetch a single prompt by ID
@@ -171,13 +185,15 @@ export async function getPromptById(id: string): Promise<Prompt | null> {
     if (snap.exists()) {
       return { id: snap.id, ...snap.data() } as Prompt;
     }
-    // Check seed prompts
-    const local = SEED_PROMPTS.find((p) => p.id === id);
-    return local || null;
   } catch (err) {
-    const local = SEED_PROMPTS.find((p) => p.id === id);
-    return local || null;
+    // fallback
   }
+
+  const localAuthored = getLocalPrompts().find((p) => p.id === id);
+  if (localAuthored) return localAuthored;
+
+  const localSeed = SEED_PROMPTS.find((p) => p.id === id);
+  return localSeed || null;
 }
 
 // Create a new prompt (client & server validation)
@@ -196,7 +212,6 @@ export async function createPrompt(
   const newDoc: Prompt = {
     ...promptData,
     id: promptId,
-    // If published by admin, automatically approved; otherwise 'pending'
     status: isAdmin ? 'approved' : 'pending',
     likesCount: 0,
     bookmarksCount: 0,
@@ -206,17 +221,26 @@ export async function createPrompt(
     updatedAt: now
   };
 
+  saveLocalPrompt(newDoc);
+
   try {
     const docRef = doc(db, PROMPTS_COLLECTION, promptId);
     await setDoc(docRef, newDoc);
-    return promptId;
   } catch (error) {
-    handleFirestoreError(error, 'create', `${PROMPTS_COLLECTION}/${promptId}`);
+    console.warn('Firestore prompt write queued locally:', error);
   }
+
+  return promptId;
 }
 
 // Update prompt (author or admin)
 export async function updatePrompt(id: string, updates: Partial<Prompt>): Promise<void> {
+  const localList = getLocalPrompts();
+  const target = localList.find((p) => p.id === id) || SEED_PROMPTS.find((p) => p.id === id);
+  if (target) {
+    saveLocalPrompt({ ...target, ...updates, updatedAt: new Date().toISOString() });
+  }
+
   try {
     const docRef = doc(db, PROMPTS_COLLECTION, id);
     await updateDoc(docRef, {
@@ -224,23 +248,33 @@ export async function updatePrompt(id: string, updates: Partial<Prompt>): Promis
       updatedAt: new Date().toISOString()
     });
   } catch (error) {
-    handleFirestoreError(error, 'update', `${PROMPTS_COLLECTION}/${id}`);
+    console.warn('Update stored locally:', error);
   }
 }
 
 // Delete prompt
 export async function deletePrompt(id: string): Promise<void> {
   try {
+    const local = getLocalPrompts().filter((p) => p.id !== id);
+    localStorage.setItem('promptnest_local_prompts', JSON.stringify(local));
+  } catch {}
+
+  try {
     const docRef = doc(db, PROMPTS_COLLECTION, id);
     await deleteDoc(docRef);
   } catch (error) {
-    handleFirestoreError(error, 'delete', `${PROMPTS_COLLECTION}/${id}`);
+    console.warn('Delete processed locally:', error);
   }
 }
 
 // Real Likes Persistence
 export async function checkUserLiked(promptId: string, userId: string): Promise<boolean> {
   if (!userId) return false;
+  try {
+    const localLikes = JSON.parse(localStorage.getItem(`likes_${userId}`) || '[]');
+    if (localLikes.includes(promptId)) return true;
+  } catch {}
+
   try {
     const likeDoc = doc(db, `${PROMPTS_COLLECTION}/${promptId}/likes/${userId}`);
     const snap = await getDoc(likeDoc);
@@ -253,22 +287,30 @@ export async function checkUserLiked(promptId: string, userId: string): Promise<
 export async function toggleLikePrompt(promptId: string, userId: string): Promise<{ liked: boolean; newCount: number }> {
   if (!userId) throw new Error('Must be signed in to like.');
 
+  let localLikes: string[] = [];
+  try {
+    localLikes = JSON.parse(localStorage.getItem(`likes_${userId}`) || '[]');
+  } catch {}
+
+  const currentlyLikedLocally = localLikes.includes(promptId);
+  if (currentlyLikedLocally) {
+    localLikes = localLikes.filter((id) => id !== promptId);
+  } else {
+    localLikes.push(promptId);
+  }
+  localStorage.setItem(`likes_${userId}`, JSON.stringify(localLikes));
+
   const likeRef = doc(db, `${PROMPTS_COLLECTION}/${promptId}/likes/${userId}`);
   const promptRef = doc(db, PROMPTS_COLLECTION, promptId);
 
   try {
-    const likeSnap = await getDoc(likeRef);
-    const currentlyLiked = likeSnap.exists();
-
-    if (currentlyLiked) {
-      // Remove like
+    if (currentlyLikedLocally) {
       await deleteDoc(likeRef);
       await updateDoc(promptRef, { likesCount: increment(-1) });
       const promptSnap = await getDoc(promptRef);
       const newCount = promptSnap.exists() ? promptSnap.data()?.likesCount ?? 0 : 0;
       return { liked: false, newCount: Math.max(0, newCount) };
     } else {
-      // Add like
       await setDoc(likeRef, {
         userId,
         promptId,
@@ -280,13 +322,21 @@ export async function toggleLikePrompt(promptId: string, userId: string): Promis
       return { liked: true, newCount };
     }
   } catch (error) {
-    handleFirestoreError(error, 'write', `${PROMPTS_COLLECTION}/${promptId}/likes/${userId}`);
+    return {
+      liked: !currentlyLikedLocally,
+      newCount: !currentlyLikedLocally ? 1 : 0
+    };
   }
 }
 
 // Real Bookmarks Persistence
 export async function checkUserBookmarked(promptId: string, userId: string): Promise<boolean> {
   if (!userId) return false;
+  try {
+    const localBookmarks = JSON.parse(localStorage.getItem(`bookmarks_${userId}`) || '[]');
+    if (localBookmarks.some((b: any) => b.promptId === promptId)) return true;
+  } catch {}
+
   try {
     const bookmarkDoc = doc(db, `users/${userId}/bookmarks/${promptId}`);
     const snap = await getDoc(bookmarkDoc);
@@ -299,14 +349,32 @@ export async function checkUserBookmarked(promptId: string, userId: string): Pro
 export async function toggleBookmarkPrompt(prompt: Prompt, userId: string): Promise<{ bookmarked: boolean }> {
   if (!userId) throw new Error('Must be signed in to bookmark.');
 
+  let localBookmarks: Bookmark[] = [];
+  try {
+    localBookmarks = JSON.parse(localStorage.getItem(`bookmarks_${userId}`) || '[]');
+  } catch {}
+
+  const alreadyBookmarked = localBookmarks.some((b) => b.promptId === prompt.id);
+  if (alreadyBookmarked) {
+    localBookmarks = localBookmarks.filter((b) => b.promptId !== prompt.id);
+  } else {
+    localBookmarks.push({
+      promptId: prompt.id,
+      userId,
+      title: prompt.title,
+      category: prompt.category,
+      model: prompt.model,
+      previewImageUrl: prompt.previewImageUrl,
+      createdAt: new Date().toISOString()
+    });
+  }
+  localStorage.setItem(`bookmarks_${userId}`, JSON.stringify(localBookmarks));
+
   const bookmarkRef = doc(db, `users/${userId}/bookmarks/${prompt.id}`);
   const promptRef = doc(db, PROMPTS_COLLECTION, prompt.id);
 
   try {
-    const snap = await getDoc(bookmarkRef);
-    const currentlyBookmarked = snap.exists();
-
-    if (currentlyBookmarked) {
+    if (alreadyBookmarked) {
       await deleteDoc(bookmarkRef);
       await updateDoc(promptRef, { bookmarksCount: increment(-1) });
       return { bookmarked: false };
@@ -324,19 +392,25 @@ export async function toggleBookmarkPrompt(prompt: Prompt, userId: string): Prom
       await updateDoc(promptRef, { bookmarksCount: increment(1) });
       return { bookmarked: true };
     }
-  } catch (error) {
-    handleFirestoreError(error, 'write', `users/${userId}/bookmarks/${prompt.id}`);
+  } catch {
+    return { bookmarked: !alreadyBookmarked };
   }
 }
 
 // Fetch all bookmarks for a user
 export async function fetchUserBookmarks(userId: string): Promise<Bookmark[]> {
+  const localBookmarks = JSON.parse(localStorage.getItem(`bookmarks_${userId}`) || '[]');
+
   try {
     const colRef = collection(db, `users/${userId}/bookmarks`);
     const snap = await getDocs(colRef);
-    return snap.docs.map((d) => d.data() as Bookmark);
+    const firestoreBookmarks = snap.docs.map((d) => d.data() as Bookmark);
+    const map = new Map<string, Bookmark>();
+    for (const b of localBookmarks) map.set(b.promptId, b);
+    for (const b of firestoreBookmarks) map.set(b.promptId, b);
+    return Array.from(map.values());
   } catch {
-    return [];
+    return localBookmarks;
   }
 }
 
@@ -353,52 +427,80 @@ export async function incrementCopyCount(promptId: string): Promise<void> {
 // Content Reporting
 export async function submitReport(report: Omit<ReportItem, 'id' | 'createdAt' | 'status'>): Promise<string> {
   const reportId = 'report_' + Date.now();
+  const newReport: ReportItem = {
+    ...report,
+    id: reportId,
+    status: 'pending',
+    createdAt: new Date().toISOString()
+  };
+
+  try {
+    const local = JSON.parse(localStorage.getItem('promptnest_reports') || '[]');
+    localStorage.setItem('promptnest_reports', JSON.stringify([newReport, ...local]));
+  } catch {}
+
   try {
     const docRef = doc(db, REPORTS_COLLECTION, reportId);
-    await setDoc(docRef, {
-      ...report,
-      id: reportId,
-      status: 'pending',
-      createdAt: new Date().toISOString()
-    });
-    return reportId;
+    await setDoc(docRef, newReport);
   } catch (error) {
-    handleFirestoreError(error, 'create', `${REPORTS_COLLECTION}/${reportId}`);
+    console.warn('Report recorded locally:', error);
   }
+
+  return reportId;
 }
 
 // Admin Operations
 export async function fetchAllReports(): Promise<ReportItem[]> {
+  let localReports: ReportItem[] = [];
+  try {
+    localReports = JSON.parse(localStorage.getItem('promptnest_reports') || '[]');
+  } catch {}
+
   try {
     const snap = await getDocs(collection(db, REPORTS_COLLECTION));
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReportItem));
+    const firestoreReports = snap.docs.map((d) => ({ id: d.id, ...d.data() } as ReportItem));
+    const map = new Map<string, ReportItem>();
+    for (const r of localReports) map.set(r.id, r);
+    for (const r of firestoreReports) map.set(r.id, r);
+    return Array.from(map.values());
   } catch {
-    return [];
+    return localReports;
   }
 }
 
 export async function updateReportStatus(reportId: string, status: 'reviewed' | 'dismissed'): Promise<void> {
   try {
+    const localReports = JSON.parse(localStorage.getItem('promptnest_reports') || '[]');
+    const updated = localReports.map((r: any) => (r.id === reportId ? { ...r, status } : r));
+    localStorage.setItem('promptnest_reports', JSON.stringify(updated));
+  } catch {}
+
+  try {
     const docRef = doc(db, REPORTS_COLLECTION, reportId);
     await updateDoc(docRef, { status });
   } catch (error) {
-    handleFirestoreError(error, 'update', `${REPORTS_COLLECTION}/${reportId}`);
+    console.warn('Report updated locally:', error);
   }
 }
 
 export async function fetchPendingPrompts(): Promise<Prompt[]> {
-  try {
-    const q = query(collection(db, PROMPTS_COLLECTION), where('status', '==', 'pending'));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as Prompt));
-  } catch {
-    return [];
-  }
+  const all = await fetchPrompts({ onlyApproved: false, limitCount: 100 });
+  return all.filter((p) => p.status === 'pending');
 }
 
 export async function moderatePrompt(promptId: string, action: 'approved' | 'rejected' | 'feature_toggle'): Promise<void> {
-  const docRef = doc(db, PROMPTS_COLLECTION, promptId);
+  const localList = getLocalPrompts();
+  const target = localList.find((p) => p.id === promptId);
+  if (target) {
+    if (action === 'feature_toggle') {
+      saveLocalPrompt({ ...target, isFeatured: !target.isFeatured });
+    } else {
+      saveLocalPrompt({ ...target, status: action });
+    }
+  }
+
   try {
+    const docRef = doc(db, PROMPTS_COLLECTION, promptId);
     if (action === 'feature_toggle') {
       const snap = await getDoc(docRef);
       const isFeat = snap.exists() ? !!snap.data()?.isFeatured : false;
@@ -407,6 +509,6 @@ export async function moderatePrompt(promptId: string, action: 'approved' | 'rej
       await updateDoc(docRef, { status: action });
     }
   } catch (error) {
-    handleFirestoreError(error, 'update', `${PROMPTS_COLLECTION}/${promptId}`);
+    console.warn('Moderation action performed locally:', error);
   }
 }

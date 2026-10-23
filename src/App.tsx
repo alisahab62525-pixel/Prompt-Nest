@@ -10,7 +10,8 @@ import { AdminDashboard } from './components/AdminDashboard.tsx';
 import { UserProfileView } from './components/UserProfileView.tsx';
 import { AboutPage, ContactPage, PrivacyPolicyPage, TermsOfServicePage, ReportModal } from './components/StaticPages.tsx';
 import { fetchPrompts } from './services/promptService.ts';
-import { Prompt, PromptCategory, AIModel, SortOption } from './types/index.ts';
+import { fetchSiteSettings, DEFAULT_SITE_SETTINGS } from './services/settingsService.ts';
+import { Prompt, PromptCategory, AIModel, SortOption, SiteSettings } from './types/index.ts';
 import { CATEGORIES_LIST, AI_MODELS_LIST } from './data/seedData.ts';
 
 // Verified generated hero visual asset
@@ -72,12 +73,31 @@ const CREATORS_LIST = [
 ];
 
 function MarketplaceApp() {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
 
   const [currentView, setCurrentView] = useState<string>('home');
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     return localStorage.getItem('promptnest_theme') === 'dark' || true;
   });
+
+  // Site content & copy settings (customizable via Admin Dashboard)
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+
+  useEffect(() => {
+    fetchSiteSettings().then(setSiteSettings);
+    const handleSettingsUpdated = (e: any) => {
+      if (e.detail) setSiteSettings(e.detail);
+    };
+    window.addEventListener('promptnest_settings_updated', handleSettingsUpdated);
+    return () => window.removeEventListener('promptnest_settings_updated', handleSettingsUpdated);
+  }, []);
+
+  // Strict admin guard: automatically bounce non-admins from admin view
+  useEffect(() => {
+    if (currentView === 'admin' && !isAdmin) {
+      setCurrentView('home');
+    }
+  }, [currentView, isAdmin]);
 
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -153,6 +173,13 @@ function MarketplaceApp() {
 
   return (
     <div className="min-h-screen flex flex-col bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors selection:bg-zinc-900 selection:text-white dark:selection:bg-white dark:selection:text-zinc-900">
+      {/* Top Announcement Notice Banner (Controlled via Admin Panel) */}
+      {siteSettings.announcementActive && siteSettings.announcementText && (
+        <div className="w-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 py-1.5 px-4 text-center text-[11px] font-medium tracking-wide flex items-center justify-center gap-2 border-b border-zinc-800 dark:border-zinc-200">
+          <span>{siteSettings.announcementText}</span>
+        </div>
+      )}
+
       {/* Top Bar Contract Navigation */}
       <Navbar
         currentView={currentView}
@@ -175,17 +202,17 @@ function MarketplaceApp() {
                   {/* Left Column: Headline & Action */}
                   <div className="lg:col-span-7 space-y-6">
                     <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                      <span>Curated AI Prompt Engineering</span>
+                      <span>{siteSettings.tagline}</span>
                       <span aria-hidden="true">·</span>
-                      <span className="text-zinc-900 dark:text-white">v2.5 Catalog</span>
+                      <span className="text-zinc-900 dark:text-white">{siteSettings.heroBadge}</span>
                     </div>
 
                     <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-zinc-900 dark:text-white leading-[1.15]" style={{ textWrap: 'balance' }}>
-                      Discover tested prompts for Midjourney, FLUX, and LLMs.
+                      {siteSettings.heroHeadline}
                     </h1>
 
                     <p className="text-sm sm:text-base text-zinc-600 dark:text-zinc-400 leading-relaxed max-w-xl">
-                      PromptNest is the verified catalog for creators and developers. Copy production-grade prompts, test parameters, and publish your own craft.
+                      {siteSettings.heroDescription}
                     </p>
 
                     {/* Integrated Search Input in Hero */}
@@ -219,7 +246,7 @@ function MarketplaceApp() {
                         onClick={() => setCurrentView('explore')}
                         className="px-5 py-2.5 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold hover:bg-zinc-800 dark:hover:bg-zinc-100 transition-colors shadow-sm flex items-center gap-2"
                       >
-                        <span>Browse 1,200+ Prompts</span>
+                        <span>{siteSettings.exploreBadgeText}</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </button>
 
@@ -703,9 +730,12 @@ function MarketplaceApp() {
           />
         )}
 
-        {/* VIEW 6: PROTECTED ADMIN CONSOLE */}
-        {currentView === 'admin' && (
-          <AdminDashboard onSelectPrompt={setSelectedPrompt} />
+        {/* VIEW 6: PROTECTED ADMIN CONSOLE (Guarded for malikbilal33877@gmail.com) */}
+        {currentView === 'admin' && isAdmin && (
+          <AdminDashboard
+            onSelectPrompt={setSelectedPrompt}
+            onOpenPublish={() => setPublishModalOpen(true)}
+          />
         )}
 
         {/* VIEW 7: ABOUT */}
@@ -725,20 +755,22 @@ function MarketplaceApp() {
       <Footer setCurrentView={setCurrentView} />
 
       {/* MODAL: PROMPT DETAIL INSPECTOR */}
-      <PromptDetailModal
-        prompt={selectedPrompt}
-        onClose={() => {
-          setSelectedPrompt(null);
-          // Clean URL param
-          const url = new URL(window.location.href);
-          url.searchParams.delete('prompt');
-          window.history.replaceState({}, '', url.toString());
-        }}
-        onOpenAuth={() => setAuthModalOpen(true)}
-        onSelectPrompt={setSelectedPrompt}
-        allPrompts={prompts}
-        onOpenReport={(id, title) => setReportModalData({ id, title })}
-      />
+      {selectedPrompt && (
+        <PromptDetailModal
+          prompt={selectedPrompt}
+          onClose={() => {
+            setSelectedPrompt(null);
+            // Clean URL param
+            const url = new URL(window.location.href);
+            url.searchParams.delete('prompt');
+            window.history.replaceState({}, '', url.toString());
+          }}
+          onOpenAuth={() => setAuthModalOpen(true)}
+          onSelectPrompt={setSelectedPrompt}
+          allPrompts={prompts}
+          onOpenReport={(id, title) => setReportModalData({ id, title })}
+        />
+      )}
 
       {/* MODAL: PUBLISH PROMPT */}
       {publishModalOpen && (

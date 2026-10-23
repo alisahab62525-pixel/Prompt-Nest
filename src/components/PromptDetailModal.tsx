@@ -41,18 +41,17 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
   allPrompts,
   onOpenReport
 }) => {
-  if (!prompt) return null;
-
   const { user, toggleFollowCreator, followingList } = useAuth();
   const [copied, setCopied] = useState<boolean>(false);
   const [shareCopied, setShareCopied] = useState<boolean>(false);
-  const [likesCount, setLikesCount] = useState<number>(prompt.likesCount || 0);
+  const [likesCount, setLikesCount] = useState<number>(prompt?.likesCount || 0);
   const [hasLiked, setHasLiked] = useState<boolean>(false);
   const [isBookmarked, setIsBookmarked] = useState<boolean>(false);
   const [isFollowing, setIsFollowing] = useState<boolean>(false);
 
   useEffect(() => {
-    if (user && prompt) {
+    if (!prompt) return;
+    if (user) {
       checkUserLiked(prompt.id, user.uid).then(setHasLiked);
       checkUserBookmarked(prompt.id, user.uid).then(setIsBookmarked);
     }
@@ -62,13 +61,15 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
 
   // Lock body scroll when modal is open
   useEffect(() => {
+    if (!prompt) return;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = 'unset';
     };
-  }, []);
+  }, [prompt]);
 
   const handleCopyPrompt = async () => {
+    if (!prompt) return;
     try {
       await navigator.clipboard.writeText(prompt.promptText);
       setCopied(true);
@@ -80,6 +81,7 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
   };
 
   const handleShare = async () => {
+    if (!prompt) return;
     const url = window.location.origin + '?prompt=' + prompt.id;
     try {
       await navigator.clipboard.writeText(url);
@@ -91,6 +93,7 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
   };
 
   const handleLike = async () => {
+    if (!prompt) return;
     if (!user) {
       onOpenAuth();
       return;
@@ -111,6 +114,7 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
   };
 
   const handleBookmark = async () => {
+    if (!prompt) return;
     if (!user) {
       onOpenAuth();
       return;
@@ -126,6 +130,7 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
   };
 
   const handleFollow = async () => {
+    if (!prompt) return;
     if (!user) {
       onOpenAuth();
       return;
@@ -137,6 +142,8 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
       //
     }
   };
+
+  if (!prompt) return null;
 
   const relatedPrompts = allPrompts
     .filter((p) => p.id !== prompt.id && (p.category === prompt.category || p.model === prompt.model))

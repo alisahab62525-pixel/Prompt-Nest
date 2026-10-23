@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { createPrompt } from '../services/promptService.ts';
 import { CATEGORIES_LIST, AI_MODELS_LIST } from '../data/seedData.ts';
 import { PromptCategory, AIModel } from '../types/index.ts';
-import { X, Upload, CheckCircle2, AlertCircle, Sparkles } from 'lucide-react';
+import { X, Upload, CheckCircle2, AlertCircle, Sparkles, RefreshCw, Image as ImageIcon, Trash2 } from 'lucide-react';
 
 // Preset sample images for quick selection
 import heroPortraitImg from '../assets/images/hero_ai_portrait_1792731508078.jpg';
@@ -23,6 +23,48 @@ interface PublishModalProps {
   onSuccess: (promptId: string) => void;
 }
 
+// Canvas-based image compressor for mobile gallery photos & desktop files
+function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.src = e.target?.result as string;
+      img.onload = () => {
+        const maxDim = 1200;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(e.target?.result as string);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        // Clean compressed JPEG suitable for storage and instant viewing
+        const compressed = canvas.toDataURL('image/jpeg', 0.85);
+        resolve(compressed);
+      };
+      img.onerror = () => reject(new Error('Failed to parse image from gallery.'));
+    };
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+  });
+}
+
 export const PublishModal: React.FC<PublishModalProps> = ({ onClose, onSuccess }) => {
   const { user, userProfile, isAdmin } = useAuth();
 
@@ -36,33 +78,42 @@ export const PublishModal: React.FC<PublishModalProps> = ({ onClose, onSuccess }
   const [aspectRatio, setAspectRatio] = useState('16:9');
   const [previewImageUrl, setPreviewImageUrl] = useState(heroPortraitImg);
   const [imageMode, setImageMode] = useState<'preset' | 'upload' | 'url'>('preset');
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successInfo, setSuccessInfo] = useState<{ id: string; status: string } | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validation: Type & Size (Max 2MB)
-    if (!file.type.startsWith('image/')) {
-      setErrorMsg('Please upload a valid image file (PNG, JPG, WebP).');
-      return;
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      setErrorMsg('Image size exceeds 2MB limit. Please choose a smaller image.');
+    // Check basic mime type or filename extension
+    const isImage = file.type.startsWith('image/') || /\.(jpe?g|png|webp|heic|bmp|gif)$/i.test(file.name);
+    if (!isImage) {
+      setErrorMsg('Please select an image from your gallery (JPG, PNG, WebP).');
       return;
     }
 
     setErrorMsg(null);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setPreviewImageUrl(event.target.result as string);
+    setIsCompressingImage(true);
+
+    try {
+      const compressedDataUrl = await compressImageFile(file);
+      setPreviewImageUrl(compressedDataUrl);
+      setUploadedFileName(file.name);
+    } catch (err: any) {
+      setErrorMsg(err.message || 'Could not load photo from gallery.');
+    } finally {
+      setIsCompressingImage(false);
+      // Reset input value so re-selecting same photo triggers onChange
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -336,19 +387,81 @@ export const PublishModal: React.FC<PublishModalProps> = ({ onClose, onSuccess }
               )}
 
               {imageMode === 'upload' && (
-                <div className="border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl p-4 text-center">
+                <div className="space-y-3">
                   <input
+                    ref={fileInputRef}
                     type="file"
                     id="file-upload"
-                    accept="image/png, image/jpeg, image/webp"
+                    accept="image/*, .png, .jpg, .jpeg, .webp, .heic, .bmp"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center justify-center">
-                    <Upload className="w-6 h-6 text-zinc-400 mb-1" />
-                    <span className="font-medium text-zinc-700 dark:text-zinc-300">Click to upload preview image</span>
-                    <span className="text-[11px] text-zinc-400">PNG, JPG, or WebP up to 2MB</span>
-                  </label>
+
+                  {isCompressingImage ? (
+                    <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-8 flex flex-col items-center justify-center text-center space-y-2 bg-zinc-50 dark:bg-zinc-950">
+                      <RefreshCw className="w-6 h-6 text-zinc-500 animate-spin" />
+                      <span className="text-xs font-semibold text-zinc-800 dark:text-zinc-200">
+                        Optimizing gallery photo...
+                      </span>
+                      <span className="text-[11px] text-zinc-400">
+                        Compressing high-res image for ultra-fast marketplace preview
+                      </span>
+                    </div>
+                  ) : uploadedFileName ? (
+                    <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl p-3 bg-zinc-50 dark:bg-zinc-950 flex flex-col sm:flex-row items-center gap-4">
+                      <div className="relative w-28 h-20 rounded-lg overflow-hidden border border-zinc-300 dark:border-zinc-700 shrink-0 bg-zinc-200 dark:bg-zinc-800">
+                        <img
+                          src={previewImageUrl}
+                          alt="Gallery upload preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0 text-center sm:text-left">
+                        <div className="flex items-center justify-center sm:justify-start gap-1.5 text-emerald-600 dark:text-emerald-400 font-semibold text-xs">
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                          <span>Photo selected from gallery</span>
+                        </div>
+                        <p className="text-[11px] text-zinc-500 truncate mt-0.5 max-w-[240px]">
+                          {uploadedFileName}
+                        </p>
+                        <div className="flex items-center justify-center sm:justify-start gap-3 mt-2">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="px-2.5 py-1 rounded bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-medium transition-colors"
+                          >
+                            Choose Another Photo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setUploadedFileName(null);
+                              setPreviewImageUrl(heroPortraitImg);
+                            }}
+                            className="text-[11px] text-red-500 hover:text-red-600 flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <label
+                      htmlFor="file-upload"
+                      className="border-2 border-dashed border-zinc-300 dark:border-zinc-700 hover:border-zinc-500 dark:hover:border-zinc-500 rounded-xl p-6 text-center cursor-pointer flex flex-col items-center justify-center transition-all bg-zinc-50/50 dark:bg-zinc-950/50 hover:bg-zinc-100/50 dark:hover:bg-zinc-900/50 group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-300 mb-2 group-hover:scale-105 transition-transform">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <span className="font-semibold text-zinc-800 dark:text-zinc-200 text-xs">
+                        Tap here to select photo from mobile gallery
+                      </span>
+                      <span className="text-[11px] text-zinc-400 mt-1">
+                        Select any photo or screenshot (Auto-optimized for mobile & web)
+                      </span>
+                    </label>
+                  )}
                 </div>
               )}
 
