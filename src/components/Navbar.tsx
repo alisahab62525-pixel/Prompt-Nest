@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { AdsterraSmartlinkButton } from './AdsterraSmartlink.tsx';
 import {
   Sparkles,
   Plus,
@@ -10,7 +11,8 @@ import {
   Sun,
   Moon,
   Menu,
-  X
+  X,
+  Zap
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -103,6 +105,11 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 3: 1 Primary Action + Utility items */}
         <div className="flex items-center gap-3 shrink-0">
+          {/* Adsterra Monetization: Smartlink (31882354) */}
+          <div className="hidden lg:block">
+            <AdsterraSmartlinkButton variant="navbar" label="AI Credits & Tools" />
+          </div>
+
           {/* Dark / Light Toggle */}
           <button
             onClick={toggleTheme}
@@ -273,7 +280,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               Admin Console
             </button>
           )}
-          <div className="pt-2">
+          <div className="pt-2 space-y-2">
+            <AdsterraSmartlinkButton variant="prompt-cta" label="⚡ Claim Partner AI Credits" />
             <button
               onClick={() => {
                 setMobileMenuOpen(false);

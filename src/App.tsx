@@ -13,6 +13,9 @@ import { fetchPrompts } from './services/promptService.ts';
 import { fetchSiteSettings, DEFAULT_SITE_SETTINGS } from './services/settingsService.ts';
 import { Prompt, PromptCategory, AIModel, SortOption, SiteSettings } from './types/index.ts';
 import { CATEGORIES_LIST, AI_MODELS_LIST } from './data/seedData.ts';
+import { AdsterraBanner } from './components/AdsterraBanner.tsx';
+import { AdsterraNativeBanner } from './components/AdsterraNativeBanner.tsx';
+import { AdsterraSmartlinkButton } from './components/AdsterraSmartlink.tsx';
 
 // Verified generated hero visual asset
 import heroPortraitImg from './assets/images/hero_ai_portrait_1792731508078.jpg';
@@ -323,6 +326,16 @@ function MarketplaceApp() {
               </div>
             </section>
 
+            {/* Adsterra Monetization: 468x60 (Desktop/Tablet 31882355) and 320x50 (Mobile 31882359) */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-1">
+              <div className="hidden sm:flex justify-center">
+                <AdsterraBanner size="468x60" />
+              </div>
+              <div className="sm:hidden flex justify-center">
+                <AdsterraBanner size="320x50" />
+              </div>
+            </div>
+
             {/* Category Navigation Strip */}
             <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="flex items-center justify-between mb-4">
@@ -388,6 +401,18 @@ function MarketplaceApp() {
                     onOpenAuth={() => setAuthModalOpen(true)}
                   />
                 ))}
+              </div>
+            </section>
+
+            {/* Mid-Page Monetization Section: 300x250 Banner (31882356) + Smartlink Card (31882354) */}
+            <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+                <div className="flex justify-center">
+                  <AdsterraBanner size="300x250" />
+                </div>
+                <div className="flex flex-col justify-center">
+                  <AdsterraSmartlinkButton variant="card" />
+                </div>
               </div>
             </section>
 
@@ -458,6 +483,9 @@ function MarketplaceApp() {
                 ))}
               </div>
             </section>
+
+            {/* Adsterra Native Banner (31882352) */}
+            <AdsterraNativeBanner />
           </div>
         )}
 
@@ -572,59 +600,79 @@ function MarketplaceApp() {
               </div>
             </div>
 
-            {/* Prompts Grid */}
-            {loading ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3 animate-pulse">
-                    <div className="aspect-[4/3] bg-zinc-200 dark:bg-zinc-800 rounded-lg"></div>
-                    <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-2/3"></div>
-                    <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-full"></div>
-                  </div>
-                ))}
-              </div>
-            ) : displayedExplorePrompts.length === 0 ? (
-              <div className="p-16 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-zinc-50/50 dark:bg-zinc-900/50 space-y-3">
-                <Compass className="w-10 h-10 text-zinc-400 mx-auto" />
-                <h3 className="text-base font-bold text-zinc-900 dark:text-white">No Prompts Found</h3>
-                <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                  No prompts matched your search query or filters. Try adjusting your search or clearing active filters.
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery('');
-                    setSelectedCategory('all');
-                    setSelectedModel('all');
-                  }}
-                  className="px-4 py-2 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold"
-                >
-                  Clear All Filters
-                </button>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                {displayedExplorePrompts.map((p) => (
-                  <PromptCard
-                    key={p.id}
-                    prompt={p}
-                    onSelect={setSelectedPrompt}
-                    onOpenAuth={() => setAuthModalOpen(true)}
-                  />
-                ))}
-              </div>
-            )}
+              {/* Prompts Layout: Grid + Desktop Skyscraper Ad Gutter */}
+              <div className="flex flex-col xl:flex-row gap-8 items-start">
+                <div className="flex-1 w-full space-y-6">
+                  {/* Prompts Grid */}
+                  {loading ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {[1, 2, 3, 4, 5, 6].map((i) => (
+                        <div key={i} className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-4 space-y-3 animate-pulse">
+                          <div className="aspect-[4/3] bg-zinc-200 dark:bg-zinc-800 rounded-lg"></div>
+                          <div className="h-4 bg-zinc-200 dark:bg-zinc-800 rounded w-2/3"></div>
+                          <div className="h-3 bg-zinc-200 dark:bg-zinc-800 rounded w-full"></div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : displayedExplorePrompts.length === 0 ? (
+                    <div className="p-16 text-center border border-dashed border-zinc-200 dark:border-zinc-800 rounded-2xl bg-zinc-50/50 dark:bg-zinc-900/50 space-y-3">
+                      <Compass className="w-10 h-10 text-zinc-400 mx-auto" />
+                      <h3 className="text-base font-bold text-zinc-900 dark:text-white">No Prompts Found</h3>
+                      <p className="text-xs text-zinc-500 max-w-sm mx-auto">
+                        No prompts matched your search query or filters. Try adjusting your search or clearing active filters.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setSearchQuery('');
+                          setSelectedCategory('all');
+                          setSelectedModel('all');
+                        }}
+                        className="px-4 py-2 rounded-lg bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-semibold"
+                      >
+                        Clear All Filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {displayedExplorePrompts.map((p) => (
+                        <PromptCard
+                          key={p.id}
+                          prompt={p}
+                          onSelect={setSelectedPrompt}
+                          onOpenAuth={() => setAuthModalOpen(true)}
+                        />
+                      ))}
+                    </div>
+                  )}
 
-            {/* Reliable Load-More behavior */}
-            {displayedExplorePrompts.length < prompts.length && (
-              <div className="pt-6 flex justify-center">
-                <button
-                  onClick={() => setVisibleCount((prev) => prev + 12)}
-                  className="px-6 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-semibold transition-colors"
-                >
-                  Load More Prompts
-                </button>
+                  {/* Reliable Load-More behavior */}
+                  {displayedExplorePrompts.length < prompts.length && (
+                    <div className="pt-6 flex justify-center">
+                      <button
+                        onClick={() => setVisibleCount((prev) => prev + 12)}
+                        className="px-6 py-2.5 rounded-xl border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-xs font-semibold transition-colors"
+                      >
+                        Load More Prompts
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop Side Gutter: Skyscraper Banners (160x600 - 31882358 & 160x300 - 31882357) */}
+                <aside className="hidden xl:flex flex-col gap-6 shrink-0 w-44 sticky top-24">
+                  <div className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-2 bg-white dark:bg-zinc-900/50 flex flex-col items-center">
+                    <AdsterraBanner size="160x600" />
+                  </div>
+                  <div className="rounded-2xl border border-zinc-200/80 dark:border-zinc-800 p-2 bg-white dark:bg-zinc-900/50 flex flex-col items-center">
+                    <AdsterraBanner size="160x300" />
+                  </div>
+                </aside>
               </div>
-            )}
+
+              {/* Adsterra Native Banner (31882352) */}
+              <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                <AdsterraNativeBanner />
+              </div>
           </div>
         )}
 
@@ -672,6 +720,19 @@ function MarketplaceApp() {
                 </div>
               ))}
             </div>
+
+            {/* Adsterra Monetization: 468x60 / 320x50 Banner Strip */}
+            <div className="pt-4 flex justify-center">
+              <div className="hidden sm:block">
+                <AdsterraBanner size="468x60" />
+              </div>
+              <div className="sm:hidden block">
+                <AdsterraBanner size="320x50" />
+              </div>
+            </div>
+
+            {/* Adsterra Native Banner (31882352) */}
+            <AdsterraNativeBanner />
           </div>
         )}
 

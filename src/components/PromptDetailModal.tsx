@@ -8,6 +8,9 @@ import {
   checkUserBookmarked,
   incrementCopyCount
 } from '../services/promptService.ts';
+import { AdsterraBanner } from './AdsterraBanner.tsx';
+import { AdsterraNativeBanner } from './AdsterraNativeBanner.tsx';
+import { AdsterraSmartlinkButton } from './AdsterraSmartlink.tsx';
 import {
   X,
   Copy,
@@ -21,7 +24,8 @@ import {
   Sparkles,
   ExternalLink,
   Sliders,
-  Maximize2
+  Maximize2,
+  Zap
 } from 'lucide-react';
 
 interface PromptDetailModalProps {
@@ -273,6 +277,11 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
                   )}
                 </button>
               </div>
+
+              {/* Adsterra Banner 300x250 (31882356) */}
+              <div className="pt-2 flex justify-center">
+                <AdsterraBanner size="300x250" />
+              </div>
             </div>
 
             {/* Right Column: Prompt Text & Parameters */}
@@ -313,6 +322,14 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
                 </div>
                 <div className="p-4 rounded-xl bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 font-mono text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed select-all overflow-x-auto whitespace-pre-wrap">
                   {prompt.promptText}
+                </div>
+
+                {/* Adsterra Smartlink (31882354) Action CTA */}
+                <div className="mt-2.5">
+                  <AdsterraSmartlinkButton
+                    variant="prompt-cta"
+                    label="⚡ Test Prompt with Partner AI Tool (Free Access)"
+                  />
                 </div>
               </div>
 
@@ -411,6 +428,11 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Adsterra Native Banner (31882352) */}
+          <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">
+            <AdsterraNativeBanner />
+          </div>
         </div>
       </div>
     </div>
