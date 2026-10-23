@@ -1,0 +1,124 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile document",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string", "maxLength": 100 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "avatarUrl": { "type": "string", "maxLength": 1000 },
+        "role": { "type": "string", "enum": ["user", "creator", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "Admin": {
+      "title": "Admin",
+      "description": "Trusted admin whitelist document",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "maxLength": 255 },
+        "role": { "type": "string", "enum": ["admin", "superadmin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "role"]
+    },
+    "Prompt": {
+      "title": "Prompt",
+      "description": "AI prompt marketplace item",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 160 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "promptText": { "type": "string", "maxLength": 4000 },
+        "negativePrompt": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 60 },
+        "model": { "type": "string", "maxLength": 60 },
+        "tags": { "type": "array" },
+        "previewImageUrl": { "type": "string", "maxLength": 2000 },
+        "authorId": { "type": "string", "maxLength": 128 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorAvatar": { "type": "string", "maxLength": 1000 },
+        "status": { "type": "string", "enum": ["approved", "pending", "rejected"] },
+        "likesCount": { "type": "integer" },
+        "bookmarksCount": { "type": "integer" },
+        "copiesCount": { "type": "integer" },
+        "isFeatured": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "promptText", "category", "model", "authorId", "status"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "User like on a prompt",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "promptId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "promptId"]
+    },
+    "Bookmark": {
+      "title": "Bookmark",
+      "description": "Saved user prompt bookmark",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "promptId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 160 },
+        "category": { "type": "string", "maxLength": 60 },
+        "model": { "type": "string", "maxLength": 60 },
+        "previewImageUrl": { "type": "string", "maxLength": 2000 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "promptId"]
+    },
+    "Report": {
+      "title": "Report",
+      "description": "User report against inappropriate prompt content",
+      "type": "object",
+      "properties": {
+        "promptId": { "type": "string", "maxLength": 128 },
+        "reporterId": { "type": "string", "maxLength": 128 },
+        "reporterEmail": { "type": "string", "maxLength": 255 },
+        "reason": { "type": "string", "maxLength": 200 },
+        "details": { "type": "string", "maxLength": 1500 },
+        "status": { "type": "string", "enum": ["pending", "reviewed", "dismissed"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["promptId", "reporterId", "reason", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile store"
+    },
+    "/admins/{adminId}": {
+      "schema": "Admin",
+      "description": "Server whitelisted admin identifiers"
+    },
+    "/prompts/{promptId}": {
+      "schema": "Prompt",
+      "description": "Public and pending AI prompt listings"
+    },
+    "/prompts/{promptId}/likes/{userId}": {
+      "schema": "Like",
+      "description": "User likes subcollection"
+    },
+    "/users/{userId}/bookmarks/{promptId}": {
+      "schema": "Bookmark",
+      "description": "User saved bookmarks"
+    },
+    "/reports/{reportId}": {
+      "schema": "Report",
+      "description": "Content moderation reports"
+    }
+  }
+}

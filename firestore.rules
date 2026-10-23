@@ -1,0 +1,103 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email != null && request.auth.token.email == 'malikbilal33877@gmail.com')
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) &&
+        request.resource.data.uid == userId &&
+        (!request.resource.data.keys().hasAny(['role']) || request.resource.data.role != 'admin' || isAdmin());
+      allow update: if isOwner(userId) &&
+        request.resource.data.uid == userId &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']) || isAdmin());
+      allow delete: if isAdmin();
+
+      // Bookmarks subcollection
+      match /bookmarks/{promptId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Notifications subcollection
+      match /notifications/{notificationId} {
+        allow read, update, delete: if isOwner(userId);
+        allow create: if isSignedIn();
+      }
+    }
+
+    // Prompts
+    match /prompts/{promptId} {
+      // Anyone can read approved prompts. Authors can read their own pending/rejected prompts. Admins can read all.
+      allow read: if resource.data.status == 'approved' ||
+        (isSignedIn() && resource.data.authorId == request.auth.uid) ||
+        isAdmin();
+
+      // Authors can create prompts with 'pending' status. Admins can create with any status.
+      allow create: if isSignedIn() &&
+        isValidId(promptId) &&
+        request.resource.data.authorId == request.auth.uid &&
+        (request.resource.data.status == 'pending' || isAdmin()) &&
+        request.resource.data.title is string && request.resource.data.title.size() <= 160 &&
+        request.resource.data.promptText is string && request.resource.data.promptText.size() <= 4000;
+
+      // Authors can update their own prompt's metadata (content, tags, title), but cannot self-approve. Admins can update all.
+      // Also allow interaction increments (likesCount, bookmarksCount, copiesCount)
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          // Case A: Owner editing prompt
+          (resource.data.authorId == request.auth.uid &&
+           request.resource.data.authorId == resource.data.authorId &&
+           (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'isFeatured']) || request.resource.data.status == 'pending')) ||
+          // Case B: Public/Auth interaction counters (incrementing copiesCount or likesCount)
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'bookmarksCount', 'copiesCount', 'viewsCount'])
+        )
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.authorId == request.auth.uid);
+
+      // Prompt likes subcollection
+      match /likes/{userId} {
+        allow read: if true;
+        allow create, delete: if isOwner(userId);
+      }
+    }
+
+    // Reports collection
+    match /reports/{reportId} {
+      allow create: if isSignedIn() || request.resource.data.keys().hasAll(['promptId', 'reason']);
+      allow read, update, delete: if isAdmin();
+    }
+  }
+}
