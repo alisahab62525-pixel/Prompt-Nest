@@ -11,6 +11,7 @@ import {
 import { AdsterraBanner } from './AdsterraBanner.tsx';
 import { AdsterraNativeBanner } from './AdsterraNativeBanner.tsx';
 import { AdsterraSmartlinkButton } from './AdsterraSmartlink.tsx';
+import { GoogleAdSenseUnit } from './GoogleAdSenseUnit.tsx';
 import {
   X,
   Copy,
@@ -428,6 +429,11 @@ export const PromptDetailModal: React.FC<PromptDetailModalProps> = ({
               </div>
             </div>
           )}
+
+          {/* Google AdSense Responsive Display Unit */}
+          <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <GoogleAdSenseUnit />
+          </div>
 
           {/* Adsterra Native Banner (31882352) */}
           <div className="pt-4 border-t border-zinc-100 dark:border-zinc-800">

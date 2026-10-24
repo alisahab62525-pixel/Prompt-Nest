@@ -40,7 +40,9 @@ import {
   CheckCircle2,
   Upload,
   Image as ImageIcon,
-  RotateCcw
+  RotateCcw,
+  Download,
+  Copy
 } from 'lucide-react';
 
 // Canvas-based image compressor for gallery photo replacement during prompt editing
@@ -118,6 +120,35 @@ export const AdminDashboard: React.FC<{
   const [isCompressingEditPhoto, setIsCompressingEditPhoto] = useState(false);
 
   const editFileInputRef = useRef<HTMLInputElement>(null);
+  const [copiedAdsTxt, setCopiedAdsTxt] = useState(false);
+
+  const handleCopyAdsTxt = () => {
+    navigator.clipboard.writeText('google.com, pub-8327085156281154, DIRECT, f08c47fec0942fa0');
+    setCopiedAdsTxt(true);
+    setTimeout(() => setCopiedAdsTxt(false), 2500);
+  };
+
+  const handleDownloadAdsTxt = () => {
+    const content = 'google.com, pub-8327085156281154, DIRECT, f08c47fec0942fa0\n';
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ads.txt';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadDistZip = () => {
+    const link = document.createElement('a');
+    link.href = '/promptshouse-dist.zip';
+    link.download = 'promptshouse-dist.zip';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -918,6 +949,86 @@ export const AdminDashboard: React.FC<{
                   onChange={(e) => setSiteSettings({ ...siteSettings, githubUrl: e.target.value })}
                   className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-zinc-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-zinc-400"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Section 5: Google AdSense & Ads.txt Deployment Hub */}
+          <div className="p-5 rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-amber-200/60 dark:border-amber-900/40">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <h4 className="font-bold text-sm text-zinc-900 dark:text-white">Google AdSense & Ads.txt Status Hub</h4>
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+                ca-pub-8327085156281154
+              </span>
+            </div>
+
+            <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-relaxed">
+              Google AdSense requires your site domain (<code>promptshouse.netlify.app</code>) to serve this exact <code>ads.txt</code> entry. If AdSense says &quot;Not found&quot;, it means Netlify hasn&apos;t received this updated file yet or Google&apos;s crawler is awaiting the next scan cycle.
+            </p>
+
+            {/* Ads.txt Code Box */}
+            <div className="p-3 rounded-xl bg-zinc-900 text-zinc-100 font-mono text-[11px] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-zinc-800">
+              <span className="select-all break-all text-amber-300">
+                google.com, pub-8327085156281154, DIRECT, f08c47fec0942fa0
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleCopyAdsTxt}
+                  className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors flex items-center gap-1.5 text-xs font-sans font-medium"
+                >
+                  {copiedAdsTxt ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedAdsTxt ? 'Copied!' : 'Copy Snippet'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadAdsTxt}
+                  className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black font-semibold transition-colors flex items-center gap-1.5 text-xs font-sans"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download ads.txt</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Netlify Deploy Helper & Dist Zip */}
+            <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="font-semibold text-xs text-zinc-900 dark:text-white flex items-center gap-1.5">
+                    <Globe className="w-3.5 h-3.5 text-blue-500" />
+                    <span>Netlify Fast-Deploy Archive (Ready to Upload)</span>
+                  </h5>
+                  <p className="text-[11px] text-zinc-500 mt-0.5">
+                    Download the complete production build containing <code>index.html</code> (AdSense meta + script) and <code>ads.txt</code> ready to drag &amp; drop onto Netlify.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownloadDistZip}
+                  className="px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors flex items-center gap-1.5 text-xs shrink-0 shadow-sm"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Site Build (.zip)</span>
+                </button>
+              </div>
+
+              <div className="pt-2 text-[10px] text-zinc-500 border-t border-zinc-100 dark:border-zinc-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <span>
+                  💡 <strong>Direct Check:</strong> Visit <code>promptshouse.netlify.app/ads.txt</code> in browser. If it shows 404, upload this file to Netlify.
+                </span>
+                <a
+                  href="https://app.netlify.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-600 hover:underline font-medium shrink-0"
+                >
+                  <span>Open Netlify Deploys</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
               </div>
             </div>
           </div>

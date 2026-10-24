@@ -16,6 +16,7 @@ import { CATEGORIES_LIST, AI_MODELS_LIST } from './data/seedData.ts';
 import { AdsterraBanner } from './components/AdsterraBanner.tsx';
 import { AdsterraNativeBanner } from './components/AdsterraNativeBanner.tsx';
 import { AdsterraSmartlinkButton } from './components/AdsterraSmartlink.tsx';
+import { GoogleAdSenseUnit } from './components/GoogleAdSenseUnit.tsx';
 
 // Verified generated hero visual asset
 import heroPortraitImg from './assets/images/hero_ai_portrait_1792731508078.jpg';
@@ -484,6 +485,11 @@ function MarketplaceApp() {
               </div>
             </section>
 
+            {/* Google AdSense Responsive Display Unit */}
+            <div className="max-w-5xl mx-auto px-4">
+              <GoogleAdSenseUnit />
+            </div>
+
             {/* Adsterra Native Banner (31882352) */}
             <AdsterraNativeBanner />
           </div>
@@ -667,6 +673,11 @@ function MarketplaceApp() {
                     <AdsterraBanner size="160x300" />
                   </div>
                 </aside>
+              </div>
+
+              {/* Google AdSense Responsive Display Unit */}
+              <div className="pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                <GoogleAdSenseUnit />
               </div>
 
               {/* Adsterra Native Banner (31882352) */}

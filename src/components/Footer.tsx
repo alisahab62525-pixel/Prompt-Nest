@@ -86,6 +86,16 @@ export const Footer: React.FC<FooterProps> = ({ setCurrentView }) => {
                   Terms of Service
                 </button>
               </li>
+              <li className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                <a href="/ads.txt" target="_blank" rel="noopener noreferrer" className="hover:text-zinc-900 dark:hover:text-white transition-colors block">
+                  Verify ads.txt
+                </a>
+              </li>
+              <li>
+                <a href="/promptshouse-dist.zip" download="promptshouse-dist.zip" className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">
+                  Download Netlify .zip
+                </a>
+              </li>
             </ul>
           </div>
         </div>
