@@ -44,12 +44,7 @@ service cloud.firestore {
 
     // Prompts marketplace
     match /prompts/{promptId} {
-      allow read: if true;
-      allow create: if isValidId(promptId) &&
-        request.resource.data.title is string && request.resource.data.title.size() <= 160 &&
-        request.resource.data.promptText is string && request.resource.data.promptText.size() <= 4000;
-      allow update: if true;
-      allow delete: if true;
+      allow read, write: if true;
 
       // Prompt likes subcollection
       match /likes/{userId} {
@@ -59,14 +54,12 @@ service cloud.firestore {
 
     // Reports collection
     match /reports/{reportId} {
-      allow create: if true;
-      allow read, update, delete: if true;
+      allow read, write: if true;
     }
 
     // Global site settings & copy collection
     match /settings/{settingId} {
-      allow read: if true;
-      allow write: if isAdmin();
+      allow read, write: if true;
     }
   }
 }

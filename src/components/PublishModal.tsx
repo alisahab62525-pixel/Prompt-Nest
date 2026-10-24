@@ -32,7 +32,7 @@ function compressImageFile(file: File): Promise<string> {
       const img = new Image();
       img.src = e.target?.result as string;
       img.onload = () => {
-        const maxDim = 1200;
+        const maxDim = 800;
         let width = img.width;
         let height = img.height;
 
@@ -55,8 +55,8 @@ function compressImageFile(file: File): Promise<string> {
           return;
         }
         ctx.drawImage(img, 0, 0, width, height);
-        // Clean compressed JPEG suitable for storage and instant viewing
-        const compressed = canvas.toDataURL('image/jpeg', 0.85);
+        // Clean compressed JPEG suitable for cloud storage and fast universal viewing
+        const compressed = canvas.toDataURL('image/jpeg', 0.75);
         resolve(compressed);
       };
       img.onerror = () => reject(new Error('Failed to parse image from gallery.'));

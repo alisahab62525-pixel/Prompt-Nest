@@ -97,7 +97,7 @@ export async function fetchPrompts(options?: {
       q = query(q, where('model', '==', options.model));
     }
 
-    const maxItems = options?.limitCount || 50;
+    const maxItems = options?.limitCount || 100;
     q = query(q, limit(maxItems));
 
     const snap = await getDocs(q);
@@ -112,23 +112,29 @@ export async function fetchPrompts(options?: {
     console.warn('Firestore fetch query warning, using local dataset fallback:', error);
   }
 
-  // Combine with seed prompts and any locally authored prompts
+  // Combine with Firestore as primary shared cloud database
   const localAuthored = getLocalPrompts();
   const allCombinedMap = new Map<string, Prompt>();
 
-  // 1. Seed prompts as base
-  for (const p of SEED_PROMPTS) {
-    allCombinedMap.set(p.id, p);
-  }
-
-  // 2. Firestore results
-  for (const p of firestoreResults) {
-    allCombinedMap.set(p.id, p);
-  }
-
-  // 3. Local created prompts
-  for (const p of localAuthored) {
-    allCombinedMap.set(p.id, p);
+  if (firestoreResults.length > 0) {
+    // 1. Primary: Firestore results (shared globally across all users and devices)
+    for (const p of firestoreResults) {
+      allCombinedMap.set(p.id, p);
+    }
+    // 2. Add any seed prompts that are not in Firestore yet
+    for (const p of SEED_PROMPTS) {
+      if (!allCombinedMap.has(p.id)) {
+        allCombinedMap.set(p.id, p);
+      }
+    }
+  } else {
+    // 3. Fallback when offline
+    for (const p of SEED_PROMPTS) {
+      allCombinedMap.set(p.id, p);
+    }
+    for (const p of localAuthored) {
+      allCombinedMap.set(p.id, p);
+    }
   }
 
   let results = Array.from(allCombinedMap.values());
@@ -221,50 +227,79 @@ export async function createPrompt(
     updatedAt: now
   };
 
-  saveLocalPrompt(newDoc);
-
+  // 1. Write to Google Cloud Firestore first
   try {
     const docRef = doc(db, PROMPTS_COLLECTION, promptId);
     await setDoc(docRef, newDoc);
-  } catch (error) {
-    console.warn('Firestore prompt write queued locally:', error);
+  } catch (error: any) {
+    console.error('Firestore prompt create error:', error);
+    throw new Error(error?.message ? `Cloud sync error: ${error.message}` : 'Failed to publish prompt to cloud database.');
   }
 
+  // 2. Cache locally
+  saveLocalPrompt(newDoc);
   return promptId;
 }
 
-// Update prompt (author or admin)
+// Update prompt (author or admin) - updates Google Cloud Firestore live
 export async function updatePrompt(id: string, updates: Partial<Prompt>): Promise<void> {
+  const now = new Date().toISOString();
   const localList = getLocalPrompts();
-  const target = localList.find((p) => p.id === id) || SEED_PROMPTS.find((p) => p.id === id);
-  if (target) {
-    saveLocalPrompt({ ...target, ...updates, updatedAt: new Date().toISOString() });
+  let basePrompt: Partial<Prompt> | null =
+    localList.find((p) => p.id === id) ||
+    SEED_PROMPTS.find((p) => p.id === id) ||
+    null;
+
+  const docRef = doc(db, PROMPTS_COLLECTION, id);
+
+  if (!basePrompt) {
+    try {
+      const snap = await getDoc(docRef);
+      if (snap.exists()) {
+        basePrompt = snap.data() as Prompt;
+      }
+    } catch {}
   }
 
+  const mergedDoc: Prompt = {
+    ...(basePrompt || {}),
+    ...updates,
+    id,
+    updatedAt: now
+  } as Prompt;
+
+  // 1. Write directly to Firestore with merge: true so it creates or updates safely
   try {
-    const docRef = doc(db, PROMPTS_COLLECTION, id);
-    await updateDoc(docRef, {
-      ...updates,
-      updatedAt: new Date().toISOString()
-    });
-  } catch (error) {
-    console.warn('Update stored locally:', error);
+    await setDoc(docRef, mergedDoc, { merge: true });
+  } catch (error: any) {
+    console.error('Firestore cloud update failed:', error);
+    throw new Error(
+      error?.message
+        ? `Database sync failed: ${error.message}`
+        : 'Could not sync update to cloud database. Please verify your connection or image size.'
+    );
   }
+
+  // 2. Keep local cache updated with the confirmed merged document
+  try {
+    saveLocalPrompt(mergedDoc);
+  } catch {}
 }
 
-// Delete prompt
+// Delete prompt from cloud and local cache
 export async function deletePrompt(id: string): Promise<void> {
+  try {
+    const docRef = doc(db, PROMPTS_COLLECTION, id);
+    await deleteDoc(docRef);
+  } catch (error: any) {
+    console.error('Delete from cloud error:', error);
+    throw new Error('Failed to delete prompt from database: ' + (error?.message || ''));
+  }
+
   try {
     const local = getLocalPrompts().filter((p) => p.id !== id);
     localStorage.setItem('promptnest_local_prompts', JSON.stringify(local));
   } catch {}
-
-  try {
-    const docRef = doc(db, PROMPTS_COLLECTION, id);
-    await deleteDoc(docRef);
-  } catch (error) {
-    console.warn('Delete processed locally:', error);
-  }
 }
 
 // Real Likes Persistence
@@ -489,26 +524,27 @@ export async function fetchPendingPrompts(): Promise<Prompt[]> {
 }
 
 export async function moderatePrompt(promptId: string, action: 'approved' | 'rejected' | 'feature_toggle'): Promise<void> {
-  const localList = getLocalPrompts();
-  const target = localList.find((p) => p.id === promptId);
-  if (target) {
-    if (action === 'feature_toggle') {
-      saveLocalPrompt({ ...target, isFeatured: !target.isFeatured });
-    } else {
-      saveLocalPrompt({ ...target, status: action });
-    }
-  }
+  const docRef = doc(db, PROMPTS_COLLECTION, promptId);
+  const now = new Date().toISOString();
 
   try {
-    const docRef = doc(db, PROMPTS_COLLECTION, promptId);
     if (action === 'feature_toggle') {
       const snap = await getDoc(docRef);
       const isFeat = snap.exists() ? !!snap.data()?.isFeatured : false;
-      await updateDoc(docRef, { isFeatured: !isFeat });
+      await setDoc(docRef, { isFeatured: !isFeat, updatedAt: now }, { merge: true });
+      
+      const localList = getLocalPrompts();
+      const target = localList.find((p) => p.id === promptId);
+      if (target) saveLocalPrompt({ ...target, isFeatured: !isFeat, updatedAt: now });
     } else {
-      await updateDoc(docRef, { status: action });
+      await setDoc(docRef, { status: action, updatedAt: now }, { merge: true });
+
+      const localList = getLocalPrompts();
+      const target = localList.find((p) => p.id === promptId);
+      if (target) saveLocalPrompt({ ...target, status: action, updatedAt: now });
     }
-  } catch (error) {
-    console.warn('Moderation action performed locally:', error);
+  } catch (error: any) {
+    console.error('Moderation action failed in cloud:', error);
+    throw new Error('Failed to update prompt status in cloud: ' + (error?.message || ''));
   }
 }
